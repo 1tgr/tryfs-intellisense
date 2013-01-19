@@ -1,0 +1,3 @@
+[submodule "fsharpbinding"]
+	path = fsharpbinding
+	url = https://github.com/fsharp/fsharpbinding.git

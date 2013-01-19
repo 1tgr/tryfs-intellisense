@@ -43,15 +43,12 @@
     <Reference Include="mscorlib" />
     <Reference Include="FSharp.Core">
       <HintPath>..\..\packages\FSharp.4.3\FSharp.Core.dll</HintPath>
-      <Private>True</Private>
     </Reference>
     <Reference Include="Nancy">
-        <HintPath>..\..\packages\Nancy\lib\net40\Nancy.dll</HintPath>
-      <Private>True</Private>
+      <HintPath>..\..\packages\Nancy\lib\net40\Nancy.dll</HintPath>
     </Reference>
     <Reference Include="Nancy.Hosting.Aspnet">
-        <HintPath>..\..\packages\Nancy.Hosting.Aspnet\lib\net40\Nancy.Hosting.Aspnet.dll</HintPath>
-      <Private>True</Private>
+      <HintPath>..\..\packages\Nancy.Hosting.Aspnet\lib\net40\Nancy.Hosting.Aspnet.dll</HintPath>
     </Reference>
     <Reference Include="System" />
     <Reference Include="System.Core" />

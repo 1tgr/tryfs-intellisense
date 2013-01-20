@@ -36,15 +36,25 @@ module NancyModuleExtensions =
     [<Sealed>]
     type private RestResourceImpl<'Resource> private () =
         static let typ = typeof<'Resource>
-        static let fieldNames = FSharpType.GetRecordFields(typ) |> Array.map (fun pi -> pi.Name)
-        static let ctor = FSharpValue.PreComputeRecordConstructor(typ)
-        static let reader = FSharpValue.PreComputeRecordReader(typ)
+
+        static let fieldNames, ctor, reader =
+            if FSharpType.IsUnion(typ) then
+                match FSharpType.GetUnionCases(typ) with
+                | [| c |] when c.GetFields() = [| |] ->
+                    let value = FSharpValue.MakeUnion(c, [| |])
+                    [| |], (fun _ -> value), (fun _ -> [| |])
+                | a -> failwithf "Unions must only have one case. %O has %d cases." typ a.Length
+            elif FSharpType.IsRecord(typ) then
+                [| for pi in FSharpType.GetRecordFields(typ) -> pi.Name |],
+                    FSharpValue.PreComputeRecordConstructor(typ),
+                    FSharpValue.PreComputeRecordReader(typ)
+            else
+                failwithf "Only single-case unions and records are supported, not %O" typ
 
         static let urls =
-            [|
-                for (attr : UrlAttribute) in Seq.cast (typ.GetCustomAttributes(typeof<UrlAttribute>, true)) ->
-                    attr.Template
-            |]
+            match typ.GetCustomAttributes(typeof<UrlAttribute>, true) with
+            | [| |] -> failwithf "No [<Url>] attribute on %O" typeof<'Resource>
+            | a -> [| for attr in a -> (unbox<UrlAttribute> attr).Template |]
 
         static member Urls = urls
 
@@ -53,22 +63,20 @@ module NancyModuleExtensions =
             unbox (ctor values)
 
         static member ResourceToString (resource : 'Resource) : string =
-            match urls with
-            | [| |] -> failwithf "No [<Url>] attribute on %O" typeof<'Resource>
-            | a ->
-                let values = reader resource
+            let url = urls.[0]
+            let values = reader resource
 
-                String.concat "/" <| seq {
-                    for part in a.[0].Split('/') ->
-                        if part.StartsWith("<") && part.EndsWith(">") then
-                            let part = part.Substring(1, part.Length - 2)
-                            match Array.IndexOf(fieldNames, part) with
-                            | n when n >= 0 -> string (values.[n])
-                            | _ -> failwithf "No field called '%s' in %O" part typeof<'Resource>
+            String.concat "/" <| seq {
+                for part in url.Split('/') ->
+                    if part.StartsWith("{") && part.EndsWith("}") then
+                        let part = part.Substring(1, part.Length - 2)
+                        match Array.IndexOf(fieldNames, part) with
+                        | n when n >= 0 -> string (values.[n])
+                        | _ -> failwithf "No field called '%s' in %O" part typeof<'Resource>
 
-                        else
-                            part
-                }
+                    else
+                        part
+            }
 
 
     let private dynamicDictionaryField (dict : obj) (name : string) : obj =
@@ -76,7 +84,7 @@ module NancyModuleExtensions =
         let value : DynamicDictionaryValue = unbox (dict.[name])
         value.Value
 
-    let private handler (fn : 'a -> 'b) : obj -> obj =
+    let private handler (fn : #IRestResource -> _) : obj -> obj =
         dynamicDictionaryField >> RestResourceImpl<_>.PartsToResource >> fn >> box
 
     [<NoDynamicInvocation>]
@@ -84,23 +92,19 @@ module NancyModuleExtensions =
 
     type NancyModule with
         member t.UrlFor (resource : 'Resource) : string<'Resource> =
-            retype (RestResourceImpl<_>.ResourceToString(resource))
+            retype (t.ModulePath + RestResourceImpl<_>.ResourceToString(resource))
 
         member t.GetT<'Resource, 'Response when 'Resource :> IRestGet<'Response>> (fn : 'Resource -> 'Response) =
             for url in RestResourceImpl<'Resource>.Urls do
                 t.Get.[url] <- Func<_,_>(handler fn)
 
-        member t.PutT<'Resource, 'Request, 'Response when 'Resource :> IRestPut<'Request, 'Response>> (fn : 'Request -> 'Resource -> 'Response) =
+        member t.PutT<'Resource, 'Request, 'Response when 'Resource :> IRestPut<'Request, 'Response>> (fn : 'Resource -> 'Request -> 'Response) =
             for url in RestResourceImpl<'Resource>.Urls do
-                t.Put.[url] <- fun parameters ->
-                    let request = t.Bind<_>()
-                    handler (fn request) parameters
+                t.Put.[url] <- Func<_,_>(handler (fun resource -> fn resource (t.Bind<_>())))
 
-        member t.PostT<'Resource, 'Request, 'Response when 'Resource :> IRestPost<'Request, 'Response>> (fn : 'Request -> 'Resource -> 'Response) =
+        member t.PostT<'Resource, 'Request, 'Response when 'Resource :> IRestPost<'Request, 'Response>> (fn : 'Resource -> 'Request -> 'Response) =
             for url in RestResourceImpl<'Resource>.Urls do
-                t.Post.[url] <- fun parameters ->
-                    let request = t.Bind<_>()
-                    handler (fn request) parameters
+                t.Post.[url] <- Func<_,_>(handler (fun resource -> fn resource (t.Bind<_>())))
 
         member t.DeleteT<'Resource when 'Resource :> IRestDelete> (fn : 'Resource -> unit) =
             for url in RestResourceImpl<'Resource>.Urls do

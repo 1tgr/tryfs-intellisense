@@ -4,6 +4,7 @@
 *.suo
 *.swp
 *.user
+*.userprefs
 bin/
 obj/
 packages/*/*.nupkg

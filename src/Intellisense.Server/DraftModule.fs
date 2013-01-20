@@ -2,19 +2,11 @@ namespace Tim.TryFSharp.Intellisense.Server
 
 open Nancy
 
-[<Url("/{id}")>]
-type Draft = { Id : string } with
-    interface IRestDelete
-
 type Ref<'Resource> =
     {
         Url : string<'Resource>
         Id : string
     }
-
-type Drafts = | Drafts with
-    interface IRestGet<Ref<Draft> array>
-    interface IRestPost<unit, Ref<Draft>>
 
 type Token =
     {
@@ -40,29 +32,65 @@ type Code = { DraftId : string; CellId : string } with
     interface IRestGet<string>
     interface IRestPut<string, ParseResult>
 
-type HelloModule() as t =
-   inherit NancyModule("/draft")
+type CellEntry =
+    {
+        Tokens : string<Tokens>
+        Completions : string<Completions>
+        Code : string<Code>
+    }
+    
+[<Url("/{DraftId}/cell/{CellId}")>]
+type Cell = { DraftId : string; CellId : string } with
+    interface IRestGet<CellEntry>
 
-   (*
-   do t.GetT <| fun Drafts ->
-       [|
-           { Url = t.UrlFor { Id = "a" }; Id = "a" }
-           { Url = t.UrlFor { Id = "b" }; Id = "b" }
-           { Url = t.UrlFor { Id = "c" }; Id = "c" }
-       |]
-   *)
+type DraftEntry =
+    {
+        Cells : Ref<Cell> array
+    }
 
-   do t.DeleteT <| fun (draft : Draft) ->
-       ()
+[<Url("/{DraftId}")>]
+type Draft = { DraftId : string } with
+    interface IRestGet<DraftEntry>
+    interface IRestDelete
 
-   do t.GetT <| fun (tokens : Tokens) ->
-       [| |]
+[<Url("/")>]
+type Drafts = | Drafts with
+    interface IRestGet<Ref<Draft> array>
+    interface IRestPost<unit, Ref<Draft>>
 
-   do t.GetT <| fun (completions : Completions) ->
-       [| |]
+type DraftModule() as t =
+    inherit NancyModule("/draft")
 
-   do t.GetT <| fun (code : Code) ->
-       ""
+    do t.GetT <| fun Drafts ->
+        [|
+            { Url = t.UrlFor { DraftId = "a" }; Id = "a" }
+            { Url = t.UrlFor { DraftId = "b" }; Id = "b" }
+            { Url = t.UrlFor { DraftId = "c" }; Id = "c" }
+        |]
 
-   do t.PutT <| fun (text : string) (code : Code) ->
-       { Tokens = [| |]; Completions = [| |] }
+    do t.GetT <| fun (draft : Draft) ->
+        {
+            Cells = [| { Url = t.UrlFor { DraftId = draft.DraftId; CellId = "1" }; Id = "1" } |]
+        }
+
+    do t.DeleteT <| fun (draft : Draft) ->
+        ()
+
+    do t.GetT <| fun (cell : Cell) ->
+        {
+            Tokens =      t.UrlFor { DraftId = cell.DraftId; CellId = cell.CellId }
+            Completions = t.UrlFor { DraftId = cell.DraftId; CellId = cell.CellId }
+            Code =        t.UrlFor { DraftId = cell.DraftId; CellId = cell.CellId }
+        }
+
+    do t.GetT <| fun (tokens : Tokens) ->
+        [| |]
+
+    do t.GetT <| fun (completions : Completions) ->
+        [| |]
+
+    do t.GetT <| fun (code : Code) ->
+        ""
+
+    do t.PutT <| fun (code : Code) (text : string) ->
+        { Tokens = [| |]; Completions = [| |] }

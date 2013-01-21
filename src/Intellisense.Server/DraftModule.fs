@@ -97,7 +97,10 @@ type DraftModule(drafts : IDraftContainer) as t =
         ""
 
     do t.PutT <| fun (code : Code) (text : string) ->
-        { Tokens = [| |]; Completions = [| |] }
+        let agent = drafts.GetAgent(code.DraftId)
+        let opts = agent.CreateScriptOptions("script.fsx", text)
+        agent.TriggerParseRequest(opts, full = false)
+        { Tokens = [| |]; Completions = agent.DoCompletion(opts, (0, 0), "", None) }
 
 type DraftContainer() =
     let syncRoot = obj()

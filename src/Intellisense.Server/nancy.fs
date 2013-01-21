@@ -2,6 +2,8 @@
 namespace Tim.TryFSharp.Intellisense.Server
 
 open System
+open System.IO
+open System.Text
 open Microsoft.FSharp.Reflection
 open Nancy
 open Nancy.ModelBinding
@@ -110,4 +112,12 @@ module NancyModuleExtensions =
             for url in RestResourceImpl<'Resource>.Urls do
                 t.Delete.[url] <- Func<_,_>(handler fn)
 
-
+type StringModelBinder() =
+    interface IModelBinder with
+        member t.CanBind typ =
+            typ = typeof<string>
+            
+        member t.Bind(context, modelType, instance, config, blacklist) =
+            let bytes = Array.zeroCreate (int context.Request.Headers.ContentLength)
+            let length = context.Request.Body.Read(bytes, 0, bytes.Length)
+            box (Encoding.UTF8.GetString(bytes, 0, length))

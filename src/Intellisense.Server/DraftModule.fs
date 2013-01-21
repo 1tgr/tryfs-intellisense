@@ -1,6 +1,7 @@
 namespace Tim.TryFSharp.Intellisense.Server
 
 open Nancy
+open FSharp.InteractiveAutocomplete
 
 type Ref<'Resource> =
     {
@@ -58,7 +59,10 @@ type Drafts = | Drafts with
     interface IRestGet<Ref<Draft> array>
     interface IRestPost<unit, Ref<Draft>>
 
-type DraftModule() as t =
+type IDraftContainer =
+    abstract GetAgent : id : string -> IntelliSenseAgent
+
+type DraftModule(drafts : IDraftContainer) as t =
     inherit NancyModule("/draft")
 
     do t.GetT <| fun Drafts ->
@@ -94,3 +98,24 @@ type DraftModule() as t =
 
     do t.PutT <| fun (code : Code) (text : string) ->
         { Tokens = [| |]; Completions = [| |] }
+
+type DraftContainer() =
+    let syncRoot = obj()
+    let mutable agents = Map.empty
+
+    interface IDraftContainer with
+        member t.GetAgent(id) =
+            lock syncRoot <| fun () ->
+                match Map.tryFind id agents with
+                | Some agent -> agent
+                | None ->
+                    let agent = IntelliSenseAgent()
+                    agents <- Map.add id agent agents
+                    agent
+
+type Bootstrapper() =
+    inherit DefaultNancyBootstrapper()
+    
+    override t.ConfigureApplicationContainer(c) =
+        base.ConfigureApplicationContainer(c)
+        ignore (c.Register<IDraftContainer, DraftContainer>().AsSingleton())

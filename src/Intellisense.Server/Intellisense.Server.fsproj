@@ -36,6 +36,9 @@
   <Import Project="$(MSBuildExtensionsPath32)\FSharp\1.0\Microsoft.FSharp.Targets" Condition="(!Exists('$(MSBuildExtensionsPath32)\..\Microsoft SDKs\F#\3.0\Framework\v4.0\Microsoft.FSharp.Targets')) And (!Exists('$(MSBuildExtensionsPath32)\..\Microsoft F#\v4.0\Microsoft.FSharp.Targets')) And (Exists('$(MSBuildExtensionsPath32)\FSharp\1.0\Microsoft.FSharp.Targets'))" />
   <ItemGroup>
     <Compile Include="nancy.fs" />
+    <Compile Include="parser.fs" />
+    <Compile Include="tipFormatter.fs" />
+    <Compile Include="autoComplete.fs" />
     <Compile Include="DraftModule.fs" />
     <None Include="web.config" />
   </ItemGroup>
@@ -52,5 +55,11 @@
     </Reference>
     <Reference Include="System" />
     <Reference Include="System.Core" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\fsharpbinding\FSharp.CompilerBinding\FSharp.CompilerBinding.fsproj">
+      <Project>{88F6940F-D300-474C-B2A7-E2ECD5B04B57}</Project>
+      <Name>FSharp.CompilerBinding</Name>
+    </ProjectReference>
   </ItemGroup>
 </Project>

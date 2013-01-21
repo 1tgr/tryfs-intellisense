@@ -123,66 +123,62 @@ type IntelliSenseAgent() =
   member x.TriggerParseRequest(opts, full) = 
     agent.Post(TriggerParseRequest(opts, full))
 
-  /// Invokes dot-completion request and writes information to the standard output
+  /// Invokes dot-completion request
   member x.DoCompletion(opts, ((line, column) as pos), lineStr, time) =
     try
-      try
-        // Get the long identifier before the current location
-        // 'residue' is the part after the last dot and 'longName' is before
-        // e.g.  System.Console.Wri  --> "Wri", [ "System"; "Console"; ]
-        let lookBack = Parsing.createBackStringReader lineStr (column - 1)
-        let residue, longName = 
-          lookBack |> Parsing.getFirst Parsing.parseBackIdentWithResidue
+      // Get the long identifier before the current location
+      // 'residue' is the part after the last dot and 'longName' is before
+      // e.g.  System.Console.Wri  --> "Wri", [ "System"; "Console"; ]
+      let lookBack = Parsing.createBackStringReader lineStr (column - 1)
+      let residue, longName = 
+        lookBack |> Parsing.getFirst Parsing.parseBackIdentWithResidue
 
-        // Try to get type information & run the request
-        let op = agent.PostAndAsyncReply(fun r -> GetTypeCheckInfo(opts, time, r))
-        let info = Async.RunSynchronously(op, ?timeout = time)
-        match info with 
-        | Some(info) ->
-            // Get items & generate output
-            let decls = info.GetDeclarations(pos, lineStr, (longName, residue), 0, defaultArg time 1000)
-            for d in decls.Items do Console.WriteLine(d.Name)
-        | None -> ()
-      with :? OperationCanceledException -> ()
-    finally Console.WriteLine("<<EOF>>")
+      // Try to get type information & run the request
+      let op = agent.PostAndAsyncReply(fun r -> GetTypeCheckInfo(opts, time, r))
+      let info = Async.RunSynchronously(op, ?timeout = time)
+      match info with 
+      | Some(info) ->
+          // Get items & generate output
+          let decls = info.GetDeclarations(pos, lineStr, (longName, residue), 0, defaultArg time 1000)
+          [| for d in decls.Items -> d.Name |]
+      | None -> [| |]
+    with :? OperationCanceledException -> [| |]
 
 
-  /// Gets ToolTip for the specified location (and prints it to the output)
+  /// Gets ToolTip for the specified location
   member x.GetToolTip(opts, ((line, column) as pos), lineStr, time) =
     try
-      try
-        // Try to get type information & run the request
-        let op = agent.PostAndAsyncReply(fun r -> GetTypeCheckInfo(opts, time, r))
-        match Async.RunSynchronously(op, ?timeout = time) with 
-        | None -> ()
-        | Some(info) ->
-            // Parsing - find the identifier around the current location
-            // (we look for full identifier in the backward direction, but only
-            // for a short identifier forward - this means that when you hover
-            // 'B' in 'A.B.C', you will get intellisense for 'A.B' module)
-            let lookBack = Parsing.createBackStringReader lineStr column
-            let lookForw = Parsing.createForwardStringReader lineStr (column + 1)
-            let backIdent = Parsing.getFirst Parsing.parseBackLongIdent lookBack
-            let nextIdent = Parsing.getFirst Parsing.parseIdent lookForw
-    
-            let identIsland =
-              match List.rev backIdent with
-              | last::prev -> (last + nextIdent)::prev |> List.rev
-              | [] -> []
+      // Try to get type information & run the request
+      let op = agent.PostAndAsyncReply(fun r -> GetTypeCheckInfo(opts, time, r))
+      match Async.RunSynchronously(op, ?timeout = time) with 
+      | None -> None
+      | Some(info) ->
+          // Parsing - find the identifier around the current location
+          // (we look for full identifier in the backward direction, but only
+          // for a short identifier forward - this means that when you hover
+          // 'B' in 'A.B.C', you will get intellisense for 'A.B' module)
+          let lookBack = Parsing.createBackStringReader lineStr column
+          let lookForw = Parsing.createForwardStringReader lineStr (column + 1)
+          let backIdent = Parsing.getFirst Parsing.parseBackLongIdent lookBack
+          let nextIdent = Parsing.getFirst Parsing.parseIdent lookForw
+  
+          let identIsland =
+            match List.rev backIdent with
+            | last::prev -> (last + nextIdent)::prev |> List.rev
+            | [] -> []
 
-            match identIsland with
-            | [ "" ] -> 
-                // There is no identifier at the current location
-                ()
-            | _ -> 
-                // Assume that we are inside identifier (F# services can also handle
-                // case when we're in a string in '#r "Foo.dll"' but we don't do that)
-                let tip = info.GetDataTipText(pos, lineStr, identIsland, identToken)
-                match tip with
-                | DataTipText(elems) 
-                    when elems |> List.forall (function 
-                      DataTipElementNone -> true | _ -> false) -> ()
-                | _ -> 
-                    Console.WriteLine(TipFormatter.formatTip tip)
-      with :? OperationCanceledException -> ()
-    finally Console.WriteLine("<<EOF>>")
+          match identIsland with
+          | [ "" ] -> 
+              // There is no identifier at the current location
+              None
+          | _ -> 
+              // Assume that we are inside identifier (F# services can also handle
+              // case when we're in a string in '#r "Foo.dll"' but we don't do that)
+              let tip = info.GetDataTipText(pos, lineStr, identIsland, identToken)
+              match tip with
+              | DataTipText(elems) 
+                  when elems |> List.forall (function 
+                    DataTipElementNone -> true | _ -> false) -> None
+              | _ -> 
+                  Some (TipFormatter.formatTip tip)
+    with :? OperationCanceledException -> None

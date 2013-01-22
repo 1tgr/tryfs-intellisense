@@ -1,12 +1,16 @@
+#nowarn "40"
 #nowarn "42"
 namespace Tim.TryFSharp.Intellisense.Server
 
 open System
+open System.Collections.Generic
 open System.IO
 open System.Text
+open System.Web
 open Microsoft.FSharp.Reflection
 open Nancy
 open Nancy.ModelBinding
+open Tavis.UriTemplates
 
 type IRestResource =
     interface end
@@ -35,21 +39,57 @@ type UrlAttribute(template  : string) =
 [<AutoOpen>]
 module NancyModuleExtensions =
 
+    let private memoize (fn : 'a -> 'b) : 'a -> 'b =
+        let cache = Dictionary()
+        let syncRoot = obj()
+        fun a ->
+            lock syncRoot <| fun () ->
+                match cache.TryGetValue(a) with
+                | true, b -> b
+                | false, _ ->
+                    let b = fn a
+                    cache.[a] <- b
+                    b
+
+    let rec private convert : Type -> string -> obj =
+        memoize <| fun toType ->
+            if toType.IsGenericType && toType.GetGenericTypeDefinition() = typedefof<option<_>> then
+                let someCase, convertInner =
+                    FSharpType.GetUnionCases(toType)
+                    |> Array.pick (fun c ->
+                        match c.GetFields() with
+                        | [| f |] -> Some (c, convert f.PropertyType)
+                        | _ -> None)
+
+                let ctor = FSharpValue.PreComputeUnionConstructor(someCase)
+                function
+                | null | "" -> null
+                | s -> ctor [| convertInner s |]
+
+            elif typeof<IConvertible>.IsAssignableFrom(toType) then
+                fun s -> Convert.ChangeType(s, toType)
+
+            else
+                failwithf "Can't convert string to %O" toType
+            
+
     [<Sealed>]
     type private RestResourceImpl<'Resource> private () =
         static let typ = typeof<'Resource>
 
-        static let fieldNames, ctor, reader =
+        static let fields, ctor, reader =
             if FSharpType.IsUnion(typ) then
                 match FSharpType.GetUnionCases(typ) with
                 | [| c |] when c.GetFields() = [| |] ->
                     let value = FSharpValue.MakeUnion(c, [| |])
                     [| |], (fun _ -> value), (fun _ -> [| |])
                 | a -> failwithf "Unions must only have one case. %O has %d cases." typ a.Length
+
             elif FSharpType.IsRecord(typ) then
-                [| for pi in FSharpType.GetRecordFields(typ) -> pi.Name |],
+                [| for pi in FSharpType.GetRecordFields(typ) -> pi.Name, convert pi.PropertyType |],
                     FSharpValue.PreComputeRecordConstructor(typ),
                     FSharpValue.PreComputeRecordReader(typ)
+
             else
                 failwithf "Only single-case unions and records are supported, not %O" typ
 
@@ -60,34 +100,50 @@ module NancyModuleExtensions =
 
         static member Urls = urls
 
-        static member PartsToResource (part : string -> obj) : 'Resource =
-            let values = Array.map part fieldNames
+        static member PartsToResource (part : string -> string) : 'Resource =
+            let values = Array.map (fun (name, convert) -> convert (part name)) fields
             unbox (ctor values)
 
         static member ResourceToString (resource : 'Resource) : string =
-            let url = urls.[0]
             let values = reader resource
+            let template = UriTemplate(urls.[0])
+            
+            for name in template.GetParameterNames() do
+                let value =
+                    match Array.tryFindIndex (fst >> (=) name) fields with
+                    | Some n -> values.[n]
+                    | None -> failwithf "No field called '%s' in %O" name typeof<'Resource>
 
-            String.concat "/" <| seq {
-                for part in url.Split('/') ->
-                    if part.StartsWith("{") && part.EndsWith("}") then
-                        let part = part.Substring(1, part.Length - 2)
-                        match Array.IndexOf(fieldNames, part) with
-                        | n when n >= 0 -> string (values.[n])
-                        | _ -> failwithf "No field called '%s' in %O" part typeof<'Resource>
+                template.SetParameter(name, value)
 
-                    else
-                        part
-            }
+            template.Resolve()
 
+    let private addRoute<'Resource, 'Response when 'Resource :> IRestResource> (t : NancyModule) (builder : NancyModule.RouteBuilder) (fn : 'Resource -> 'Response) (url : string) =
+        let path, queryParams =
+            let template = UriTemplate(url)
+            for name in template.GetParameterNames() do
+                template.SetParameter(name, "{" + name + "}")
+                
+            match template.Resolve().Replace("%7B", "{").Replace("%7D", "}").Split([| '?' |], 2) with
+            | [| |] -> "", Set.empty
+            | [| path |] -> path, Set.empty
+            | a -> a.[0], Set.ofSeq (HttpUtility.ParseQueryString(a.[1])).AllKeys
 
-    let private dynamicDictionaryField (dict : obj) (name : string) : obj =
-        let dict : DynamicDictionary = unbox dict
-        let value : DynamicDictionaryValue = unbox (dict.[name])
-        value.Value
+        builder.[path] <- fun dict ->
+            let dict : DynamicDictionary = unbox dict
+            let query : DynamicDictionary = unbox t.Request.Query
 
-    let private handler (fn : #IRestResource -> _) : obj -> obj =
-        dynamicDictionaryField >> RestResourceImpl<_>.PartsToResource >> fn >> box
+            let resource =
+                RestResourceImpl<_>.PartsToResource <| fun name ->
+                    let dict =
+                        if Set.contains name queryParams then
+                            query
+                        else
+                            dict
+
+                    unbox (dict.[name] :?> DynamicDictionaryValue).Value
+
+            box (fn resource)
 
     [<NoDynamicInvocation>]
     let inline private retype (x : 'a) : 'b = (# "" x : 'b #)
@@ -97,20 +153,16 @@ module NancyModuleExtensions =
             retype (t.ModulePath + RestResourceImpl<_>.ResourceToString(resource))
 
         member t.GetT<'Resource, 'Response when 'Resource :> IRestGet<'Response>> (fn : 'Resource -> 'Response) =
-            for url in RestResourceImpl<'Resource>.Urls do
-                t.Get.[url] <- Func<_,_>(handler fn)
+            Array.iter (addRoute t t.Get fn) RestResourceImpl<'Resource>.Urls
 
         member t.PutT<'Resource, 'Request, 'Response when 'Resource :> IRestPut<'Request, 'Response>> (fn : 'Resource -> 'Request -> 'Response) =
-            for url in RestResourceImpl<'Resource>.Urls do
-                t.Put.[url] <- Func<_,_>(handler (fun resource -> fn resource (t.Bind<_>())))
+            Array.iter (addRoute t t.Put (fun resource -> fn resource (t.Bind<_>()))) RestResourceImpl<'Resource>.Urls
 
         member t.PostT<'Resource, 'Request, 'Response when 'Resource :> IRestPost<'Request, 'Response>> (fn : 'Resource -> 'Request -> 'Response) =
-            for url in RestResourceImpl<'Resource>.Urls do
-                t.Post.[url] <- Func<_,_>(handler (fun resource -> fn resource (t.Bind<_>())))
+            Array.iter (addRoute t t.Post (fun resource -> fn resource (t.Bind<_>()))) RestResourceImpl<'Resource>.Urls
 
         member t.DeleteT<'Resource when 'Resource :> IRestDelete> (fn : 'Resource -> unit) =
-            for url in RestResourceImpl<'Resource>.Urls do
-                t.Delete.[url] <- Func<_,_>(handler fn)
+            Array.iter (addRoute t t.Delete fn) RestResourceImpl<'Resource>.Urls
 
 type StringModelBinder() =
     interface IModelBinder with

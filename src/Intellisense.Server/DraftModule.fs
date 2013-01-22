@@ -24,12 +24,12 @@ type ParseResult =
 type Tokens = { DraftId : string; CellId : string } with
     interface IRestGet<Token array>
 
-[<Url("/{DraftId}/cell/{CellId}/completions")>]
-type Completions = { DraftId : string; CellId : string } with
+[<Url("/{DraftId}/cell/{CellId}/completions{?Line,Column}")>]
+type Completions = { DraftId : string; CellId : string; Line : int option; Column : int option } with
     interface IRestGet<string array>
 
-[<Url("/{DraftId}/cell/{CellId}/code")>]
-type Code = { DraftId : string; CellId : string } with
+[<Url("/{DraftId}/cell/{CellId}/code{?Line,Column}")>]
+type Code = { DraftId : string; CellId : string; Line : int option; Column : int option } with
     interface IRestGet<string>
     interface IRestPut<string, ParseResult>
 
@@ -83,8 +83,8 @@ type DraftModule(drafts : IDraftContainer) as t =
     do t.GetT <| fun (cell : Cell) ->
         {
             Tokens =      t.UrlFor { DraftId = cell.DraftId; CellId = cell.CellId }
-            Completions = t.UrlFor { DraftId = cell.DraftId; CellId = cell.CellId }
-            Code =        t.UrlFor { DraftId = cell.DraftId; CellId = cell.CellId }
+            Completions = t.UrlFor { DraftId = cell.DraftId; CellId = cell.CellId; Line = None; Column = None }
+            Code =        t.UrlFor { DraftId = cell.DraftId; CellId = cell.CellId; Line = None; Column = None }
         }
 
     do t.GetT <| fun (tokens : Tokens) ->
@@ -97,10 +97,16 @@ type DraftModule(drafts : IDraftContainer) as t =
         ""
 
     do t.PutT <| fun (code : Code) (text : string) ->
+        let pos =
+            match code.Line, code.Column with
+            | Some line, Some column -> line, column
+            | None, _ -> failwithf "Please supply the 'line' query parameter"
+            | _, None -> failwithf "Please supply the 'column' query parameter"
+
         let agent = drafts.GetAgent(code.DraftId)
         let opts = agent.CreateScriptOptions("script.fsx", text)
         agent.TriggerParseRequest(opts, full = false)
-        { Tokens = [| |]; Completions = agent.DoCompletion(opts, (0, 0), "", None) }
+        { Tokens = [| |]; Completions = agent.DoCompletion(opts, pos, "", None) }
 
 type DraftContainer() =
     let syncRoot = obj()

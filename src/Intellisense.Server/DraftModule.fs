@@ -68,7 +68,8 @@ type DraftModule(drafts : IDraftContainer) as t =
 
     let pos line column =
         match line, column with
-        | Some line, Some column -> line, column
+        | Some line, Some column -> Some (line, column)
+        | None, None -> None
         | None, _ -> failwithf "Please supply the 'line' query parameter"
         | _, None -> failwithf "Please supply the 'column' query parameter"
 
@@ -98,7 +99,7 @@ type DraftModule(drafts : IDraftContainer) as t =
         [| |]
 
     do t.GetT <| fun (completions : Completions) ->
-        let pos = pos completions.Line completions.Column
+        let pos = defaultArg (pos completions.Line completions.Column) (0, 0)
         let agent, opts = drafts.GetAgent(completions.DraftId)
         agent.DoCompletion(opts, pos, "", None)
 
@@ -107,14 +108,18 @@ type DraftModule(drafts : IDraftContainer) as t =
         opts.Source
 
     do t.PutT <| fun (code : Code) (text : string) ->
-        let pos = pos code.Line code.Column
-
         let agent, opts =
             drafts.WithAgent code.DraftId <| fun agent _ ->
                 agent, agent.CreateScriptOptions("script.fsx", text)
 
         agent.TriggerParseRequest(opts, full = false)
-        { Tokens = [| |]; Completions = agent.DoCompletion(opts, pos, "", None) }
+        
+        let completions =
+            match pos code.Line code.Column with
+            | Some pos -> agent.DoCompletion(opts, pos, "", None)
+            | None -> [| |]
+
+        { Tokens = [| |]; Completions = completions }
 
 type DraftContainer() =
     let syncRoot = obj()

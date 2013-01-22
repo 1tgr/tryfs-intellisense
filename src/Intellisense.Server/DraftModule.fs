@@ -60,10 +60,17 @@ type Drafts = | Drafts with
     interface IRestPost<unit, Ref<Draft>>
 
 type IDraftContainer =
-    abstract GetAgent : id : string -> IntelliSenseAgent
+    abstract GetAgent : id : string -> IntelliSenseAgent * RequestOptions
+    abstract WithAgent : id : string -> fn : (IntelliSenseAgent -> RequestOptions -> 'a * RequestOptions) -> 'a * RequestOptions
 
 type DraftModule(drafts : IDraftContainer) as t =
     inherit NancyModule("/draft")
+
+    let pos line column =
+        match line, column with
+        | Some line, Some column -> line, column
+        | None, _ -> failwithf "Please supply the 'line' query parameter"
+        | _, None -> failwithf "Please supply the 'column' query parameter"
 
     do t.GetT <| fun Drafts ->
         [|
@@ -91,20 +98,21 @@ type DraftModule(drafts : IDraftContainer) as t =
         [| |]
 
     do t.GetT <| fun (completions : Completions) ->
-        [| |]
+        let pos = pos completions.Line completions.Column
+        let agent, opts = drafts.GetAgent(completions.DraftId)
+        agent.DoCompletion(opts, pos, "", None)
 
     do t.GetT <| fun (code : Code) ->
-        ""
+        let _, opts = drafts.GetAgent(code.DraftId)
+        opts.Source
 
     do t.PutT <| fun (code : Code) (text : string) ->
-        let pos =
-            match code.Line, code.Column with
-            | Some line, Some column -> line, column
-            | None, _ -> failwithf "Please supply the 'line' query parameter"
-            | _, None -> failwithf "Please supply the 'column' query parameter"
+        let pos = pos code.Line code.Column
 
-        let agent = drafts.GetAgent(code.DraftId)
-        let opts = agent.CreateScriptOptions("script.fsx", text)
+        let agent, opts =
+            drafts.WithAgent code.DraftId <| fun agent _ ->
+                agent, agent.CreateScriptOptions("script.fsx", text)
+
         agent.TriggerParseRequest(opts, full = false)
         { Tokens = [| |]; Completions = agent.DoCompletion(opts, pos, "", None) }
 
@@ -113,14 +121,21 @@ type DraftContainer() =
     let mutable agents = Map.empty
 
     interface IDraftContainer with
-        member t.GetAgent(id) =
+        member t.WithAgent id fn =
             lock syncRoot <| fun () ->
-                match Map.tryFind id agents with
-                | Some agent -> agent
-                | None ->
-                    let agent = IntelliSenseAgent()
-                    agents <- Map.add id agent agents
-                    agent
+                let agent, opts =
+                    match Map.tryFind id agents with
+                    | Some t -> t
+                    | None ->
+                        let agent = IntelliSenseAgent()
+                        agent, agent.CreateScriptOptions("script.fsx", "")
+
+                let result, opts = fn agent opts
+                agents <- Map.add id (agent, opts) agents
+                result, opts
+
+        member t.GetAgent(id) =
+            (t :> IDraftContainer).WithAgent id <| fun agent opts -> agent, opts
 
 type Bootstrapper() =
     inherit DefaultNancyBootstrapper()

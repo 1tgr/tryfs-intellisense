@@ -27,7 +27,7 @@ printfn "Hello, %s"</textarea>
         console.log(prefix);
 
         $.ajax({
-          url: "/draft/1/cell/1/code?line=" + cur.line + "&column=" + cur.ch,
+          url: "draft/1/cell/1/code?line=" + cur.line + "&column=" + cur.ch,
           contentType: "text/plain",
           data: editor.getValue(),
           dataType: "json",

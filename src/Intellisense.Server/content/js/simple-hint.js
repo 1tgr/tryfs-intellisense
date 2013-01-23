@@ -18,44 +18,27 @@
         return;
       }
 
-      var result = getHints(editor, givenOptions);
-      if (!result || !result.list.length) return;
-      var completions = result.list;
-      function insert(str) {
-        editor.replaceRange(str, result.from, result.to);
-      }
-      // When there is only one completion, use it directly.
-      if (options.completeSingle && completions.length == 1) {
-        insert(completions[0]);
-        return true;
-      }
-
       // Build the select widget
       var complete = document.createElement("div");
       complete.className = "CodeMirror-completions";
       var sel = complete.appendChild(document.createElement("select"));
-      // Opera doesn't move the selection when pressing up/down in a
-      // multi-select, but it does properly support the size property on
-      // single-selects, so no multi-select is necessary.
-      if (!window.opera) sel.multiple = true;
-      for (var i = 0; i < completions.length; ++i) {
-        var opt = sel.appendChild(document.createElement("option"));
-        opt.appendChild(document.createTextNode(completions[i]));
-      }
-      sel.firstChild.selected = true;
-      sel.size = Math.min(10, completions.length);
-      var pos = editor.cursorCoords(options.alignWithWord ? result.from : null);
+
+      var pos = editor.cursorCoords();
       complete.style.left = pos.left + "px";
       complete.style.top = pos.bottom + "px";
-      document.body.appendChild(complete);
+
       // If we're at the edge of the screen, then we want the menu to appear on the left of the cursor.
       var winW = window.innerWidth || Math.max(document.body.offsetWidth, document.documentElement.offsetWidth);
       if(winW - pos.left < sel.clientWidth)
         complete.style.left = (pos.left - sel.clientWidth) + "px";
-      // Hack to hide the scrollbar.
-      if (completions.length <= 10)
-        complete.style.width = (sel.clientWidth - 1) + "px";
 
+      // Opera doesn't move the selection when pressing up/down in a
+      // multi-select, but it does properly support the size property on
+      // single-selects, so no multi-select is necessary.
+      if (!window.opera) sel.multiple = true;
+      document.body.appendChild(complete);
+
+      var insert;
       var done = false;
       function close() {
         if (done) return;
@@ -63,7 +46,7 @@
         complete.parentNode.removeChild(complete);
       }
       function pick() {
-        insert(completions[sel.selectedIndex]);
+        if (insert) insert(sel.selectedIndex);
         close();
         setTimeout(function(){editor.focus();}, 50);
       }
@@ -89,6 +72,25 @@
       sel.focus();
       // Opera sometimes ignores focusing a freshly created node
       if (window.opera) setTimeout(function(){if (!done) sel.focus();}, 100);
+
+      getHints(editor, givenOptions, function(result) {
+        var completions = result.list;
+        insert = function(index) {
+          var str = completions[index];
+          editor.replaceRange(str, result.from, result.to);
+        };
+
+        for (var i = 0; i < completions.length; ++i) {
+          var opt = sel.appendChild(document.createElement("option"));
+          opt.appendChild(document.createTextNode(completions[i]));
+        }
+        sel.firstChild.selected = true;
+        sel.size = Math.min(10, completions.length);
+
+        // Hack to hide the scrollbar.
+        if (completions.length <= 10)
+          complete.style.width = (sel.clientWidth - 1) + "px";
+      });
       return true;
     }
     return collectHints();

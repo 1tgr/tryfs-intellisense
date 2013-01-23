@@ -2,60 +2,43 @@
 <html>
   <head>
     <meta charset="utf-8">
-    <title>CodeMirror: Autocomplete Demo</title>
+    <title>F# Autocomplete Demo</title>
     <link rel="stylesheet" href="content/css/codemirror.css">
     <link rel="stylesheet" href="content/css/simple-hint.css">
   </head>
   <body>
-    <h1>CodeMirror: Autocomplete demo</h1>
+    <h1>F# Autocomplete Demo</h1>
 
-    <form><textarea id="code" name="code">
-function getCompletions(token, context) {
-  var found = [], start = token.string;
-  function maybeAdd(str) {
-    if (str.indexOf(start) == 0) found.push(str);
-  }
-  function gatherCompletions(obj) {
-    if (typeof obj == "string") forEach(stringProps, maybeAdd);
-    else if (obj instanceof Array) forEach(arrayProps, maybeAdd);
-    else if (obj instanceof Function) forEach(funcProps, maybeAdd);
-    for (var name in obj) maybeAdd(name);
-  }
+    <form>
+      <textarea id="code" name="code">let who = "world"
+printfn "Hello, %s"</textarea>
+    </form>
 
-  if (context) {
-    // If this is a property, see if it belongs to some object we can
-    // find in the current environment.
-    var obj = context.pop(), base;
-    if (obj.className == "js-variable")
-      base = window[obj.string];
-    else if (obj.className == "js-string")
-      base = "";
-    else if (obj.className == "js-atom")
-      base = 1;
-    while (base != null && context.length)
-      base = base[context.pop().string];
-    if (base != null) gatherCompletions(base);
-  }
-  else {
-    // If not, just look in the window object and any local scope
-    // (reading into JS mode internals to get at the local variables)
-    for (var v = token.state.localVars; v; v = v.next) maybeAdd(v.name);
-    gatherCompletions(window);
-    forEach(keywords, maybeAdd);
-  }
-  return found;
-}
-</textarea></form>
+    <p>Press Ctrl+Space for autocompletion.</p>
 
     <script src="content/js/codemirror.js"></script>
+    <script src="content/js/codemirror-fsharp.js"></script>
     <script src="content/js/simple-hint.js"></script>
     <script>
-      CodeMirror.commands.autocomplete = function(cm) {
-        CodeMirror.simpleHint(cm, CodeMirror.javascriptHint);
+      function getHints(editor, _, cont) {
+        var cur = editor.getCursor(), token = editor.getTokenAt(cur);
+        setTimeout(function() {
+          cont({
+                 list: [ "printfn", "System", "Console" ],
+                 from: cur,
+                 to: cur
+           });
+          }, 1000);
       }
+
+      CodeMirror.commands.autocomplete = function(cm) {
+        CodeMirror.simpleHint(cm, getHints);
+      };
+
       var editor = CodeMirror.fromTextArea(document.getElementById("code"), {
         lineNumbers: true,
-        extraKeys: {"Ctrl-Space": "autocomplete"}
+        extraKeys: {"Ctrl-Space": "autocomplete"},
+        mode: "fsharp"
       });
     </script>
   </body>

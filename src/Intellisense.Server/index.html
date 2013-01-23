@@ -23,6 +23,9 @@ printfn "Hello, %s"</textarea>
     <script>
       function getHints(editor, _, cont) {
         var cur = editor.getCursor(), token = editor.getTokenAt(cur);
+        var prefix = editor.getLine(cur.line).slice(token.start, cur.ch).trim();
+        console.log(prefix);
+
         $.ajax({
           url: "/draft/1/cell/1/code?line=" + cur.line + "&column=" + cur.ch,
           contentType: "text/plain",
@@ -30,13 +33,29 @@ printfn "Hello, %s"</textarea>
           dataType: "json",
           type: "PUT",
           success: function(response) {
-            cont({ list: response.Completions, from: cur, to: cur });
+            var i = 0, c = response.Completions;
+
+            if (prefix.length) {
+              while (i < c.length) {
+                if (c[i].indexOf(prefix) == 0) {
+                  i++;
+                } else {
+                  c.splice(i, 1);
+                }
+              }
+            }
+
+            cont({
+              list: c,
+              from: { line: cur.line, ch: token.start },
+              to: { line: cur.line, ch: token.end }
+            });
           }
         });
       }
 
       CodeMirror.commands.autocomplete = function(cm) {
-        CodeMirror.simpleHint(cm, getHints);
+        CodeMirror.simpleHint(cm, getHints, { closeOnBackspace: false });
       };
 
       var editor = CodeMirror.fromTextArea(document.getElementById("code"), {

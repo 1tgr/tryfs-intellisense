@@ -107,7 +107,7 @@ CodeMirror.defineMode('fsharp', function(config) {
       }
       return 'number';
     }
-    if ( /[+\-*&%=<>!?|]/.test(ch)) {
+    if ( /[+\-*&%=<>!?.|]/.test(ch)) {
       return 'operator';
     }
     stream.eatWhile(/\w/);

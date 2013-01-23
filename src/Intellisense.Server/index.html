@@ -19,16 +19,20 @@ printfn "Hello, %s"</textarea>
     <script src="content/js/codemirror.js"></script>
     <script src="content/js/codemirror-fsharp.js"></script>
     <script src="content/js/simple-hint.js"></script>
+    <script src="content/js/jquery.min.js"></script>
     <script>
       function getHints(editor, _, cont) {
         var cur = editor.getCursor(), token = editor.getTokenAt(cur);
-        setTimeout(function() {
-          cont({
-                 list: [ "printfn", "System", "Console" ],
-                 from: cur,
-                 to: cur
-           });
-          }, 1000);
+        $.ajax({
+          url: "/draft/1/cell/1/code?line=" + cur.line + "&column=" + cur.ch,
+          contentType: "text/plain",
+          data: editor.getValue(),
+          dataType: "json",
+          type: "PUT",
+          success: function(response) {
+            cont({ list: response.Completions, from: cur, to: cur });
+          }
+        });
       }
 
       CodeMirror.commands.autocomplete = function(cm) {

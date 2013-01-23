@@ -23,14 +23,17 @@
       complete.className = "CodeMirror-completions";
       var sel = complete.appendChild(document.createElement("select"));
 
-      var pos = editor.cursorCoords();
-      complete.style.left = pos.left + "px";
-      complete.style.top = pos.bottom + "px";
+      function moveTo(pos) {
+        complete.style.left = pos.left + "px";
+        complete.style.top = pos.bottom + "px";
 
-      // If we're at the edge of the screen, then we want the menu to appear on the left of the cursor.
-      var winW = window.innerWidth || Math.max(document.body.offsetWidth, document.documentElement.offsetWidth);
-      if(winW - pos.left < sel.clientWidth)
-        complete.style.left = (pos.left - sel.clientWidth) + "px";
+        // If we're at the edge of the screen, then we want the menu to appear on the left of the cursor.
+        var winW = window.innerWidth || Math.max(document.body.offsetWidth, document.documentElement.offsetWidth);
+        if(winW - pos.left < sel.clientWidth)
+          complete.style.left = (pos.left - sel.clientWidth) + "px";
+      }
+
+      moveTo(editor.cursorCoords());
 
       // Opera doesn't move the selection when pressing up/down in a
       // multi-select, but it does properly support the size property on
@@ -76,16 +79,27 @@
       getHints(editor, givenOptions, function(result) {
         var completions = result.list;
         insert = function(index) {
-          var str = completions[index];
-          editor.replaceRange(str, result.from, result.to);
+          editor.replaceRange(completions[index], result.from, result.to);
         };
+
+        if (options.completeSingle && completions.length == 1) {
+          insert(0);
+          close();
+          return;
+        }
 
         for (var i = 0; i < completions.length; ++i) {
           var opt = sel.appendChild(document.createElement("option"));
           opt.appendChild(document.createTextNode(completions[i]));
         }
-        sel.firstChild.selected = true;
+
+        if (sel.firstChild)
+          sel.firstChild.selected = true;
+
         sel.size = Math.min(10, completions.length);
+
+        if (options.alignWithWord)
+          moveTo(editor.cursorCoords(result.from));
 
         // Hack to hide the scrollbar.
         if (completions.length <= 10)

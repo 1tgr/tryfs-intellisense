@@ -1,5 +1,6 @@
 namespace Tim.TryFSharp.Intellisense.Server
 
+open System.IO
 open Nancy
 open Nancy.Conventions
 open FSharp.InteractiveAutocomplete
@@ -74,6 +75,22 @@ type DraftModule(drafts : IDraftContainer) as t =
         | None, _ -> failwithf "Please supply the 'line' query parameter"
         | _, None -> failwithf "Please supply the 'column' query parameter"
 
+    let lineAt s n =
+        use reader = new StringReader(s)
+        
+        let rec go lineStr i =
+            if lineStr = null then
+                ""
+            elif i >= n then
+                lineStr
+            else
+                go (reader.ReadLine()) (i + 1)
+
+        go (reader.ReadLine()) 0
+
+    let doCompletions ((line, _) as pos) (agent : IntelliSenseAgent) (opts : RequestOptions) =
+        agent.DoCompletion(opts, pos, lineAt opts.Source line, None)
+
     do t.GetT <| fun Drafts ->
         [|
             { Url = t.UrlFor { DraftId = "a" }; Id = "a" }
@@ -101,8 +118,7 @@ type DraftModule(drafts : IDraftContainer) as t =
 
     do t.GetT <| fun (completions : Completions) ->
         let pos = defaultArg (pos completions.Line completions.Column) (0, 0)
-        let agent, opts = drafts.GetAgent(completions.DraftId)
-        agent.DoCompletion(opts, pos, "", None)
+        drafts.GetAgent(completions.DraftId) ||> doCompletions pos
 
     do t.GetT <| fun (code : Code) ->
         let _, opts = drafts.GetAgent(code.DraftId)
@@ -117,7 +133,7 @@ type DraftModule(drafts : IDraftContainer) as t =
         
         let completions =
             match pos code.Line code.Column with
-            | Some pos -> agent.DoCompletion(opts, pos, "", None)
+            | Some pos -> doCompletions pos agent opts
             | None -> [| |]
 
         { Tokens = [| |]; Completions = completions }

@@ -41,6 +41,11 @@
     <Compile Include="autoComplete.fs" />
     <Compile Include="DraftModule.fs" />
     <None Include="web.config" />
+    <None Include="index.html" />
+    <None Include="content\css\codemirror.css" />
+    <None Include="content\css\simple-hint.css" />
+    <None Include="content\js\codemirror.js" />
+    <None Include="content\js\simple-hint.js" />
   </ItemGroup>
   <ItemGroup>
     <Reference Include="mscorlib" />
@@ -65,5 +70,8 @@
       <Project>{88F6940F-D300-474C-B2A7-E2ECD5B04B57}</Project>
       <Name>FSharp.CompilerBinding</Name>
     </ProjectReference>
+  </ItemGroup>
+  <ItemGroup>
+    <Folder Include="content\" />
   </ItemGroup>
 </Project>

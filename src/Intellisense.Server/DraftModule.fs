@@ -1,6 +1,7 @@
 namespace Tim.TryFSharp.Intellisense.Server
 
 open Nancy
+open Nancy.Conventions
 open FSharp.InteractiveAutocomplete
 
 type Ref<'Resource> =
@@ -148,3 +149,7 @@ type Bootstrapper() =
     override t.ConfigureApplicationContainer(c) =
         base.ConfigureApplicationContainer(c)
         ignore (c.Register<IDraftContainer, DraftContainer>().AsSingleton())
+
+    override t.ConfigureConventions(conventions) =
+        base.ConfigureConventions(conventions)
+        conventions.StaticContentsConventions.Add(StaticContentConventionBuilder.AddFile("/index.html", "index.html"))

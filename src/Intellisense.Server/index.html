@@ -19,23 +19,27 @@ printfn "Hello, %s"</textarea>
     <script src="content/js/codemirror.js"></script>
     <script src="content/js/codemirror-fsharp.js"></script>
     <script src="content/js/simple-hint.js"></script>
-    <script src="content/js/jquery.min.js"></script>
+    <script src="content/js/jquery.js"></script>
     <script>
-      function getHints(editor, _, cont) {
+      function getHints(editor) {
         var cur = editor.getCursor(), token = editor.getTokenAt(cur);
         var prefix = editor.getLine(cur.line).slice(token.start, cur.ch).trim();
         console.log(prefix);
 
         var promise =
           $.ajax({
-            url: "draft/1/cell/1/code?line=" + cur.line + "&column=" + cur.ch,
+            url: "draft/1/cell/1/code",
             contentType: "text/plain",
             data: editor.getValue(),
-            dataType: "json",
             type: "PUT"
-          })
-          .then(function(response) {
-            var i = 0, c = response.Completions;
+          }).then(function() {
+            return $.ajax({
+              url: "draft/1/cell/1/completions",
+              data: { line: cur.line, column: cur.ch },
+              dataType: "json"
+            });
+          }).then(function(c) {
+            var i = 0;
 
             if (prefix.length) {
               while (i < c.length) {

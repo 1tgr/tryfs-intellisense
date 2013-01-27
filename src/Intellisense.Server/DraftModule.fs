@@ -11,16 +11,19 @@ type Ref<'Resource> =
         Id : string
     }
 
+type Error =
+    {
+        Todo : unit
+    }
+
 type Token =
     {
         Todo : unit
     }
 
-type ParseResult =
-    {
-        Tokens : Token array
-        Completions : string array
-    }
+[<Url("/{DraftId}/cell/{CellId}/errors")>]
+type Errors = { DraftId : string; CellId : string } with
+    interface IRestGet<Error array>
 
 [<Url("/{DraftId}/cell/{CellId}/tokens")>]
 type Tokens = { DraftId : string; CellId : string } with
@@ -30,13 +33,14 @@ type Tokens = { DraftId : string; CellId : string } with
 type Completions = { DraftId : string; CellId : string; Line : int option; Column : int option } with
     interface IRestGet<string array>
 
-[<Url("/{DraftId}/cell/{CellId}/code{?Line,Column}")>]
-type Code = { DraftId : string; CellId : string; Line : int option; Column : int option } with
+[<Url("/{DraftId}/cell/{CellId}/code")>]
+type Code = { DraftId : string; CellId : string } with
     interface IRestGet<string>
-    interface IRestPut<string, ParseResult>
+    interface IRestPut<string, unit>
 
 type CellEntry =
     {
+        Errors : string<Errors>
         Tokens : string<Tokens>
         Completions : string<Completions>
         Code : string<Code>
@@ -108,10 +112,14 @@ type DraftModule(drafts : IDraftContainer) as t =
 
     do t.GetT <| fun (cell : Cell) ->
         {
+            Errors =      t.UrlFor { DraftId = cell.DraftId; CellId = cell.CellId }
             Tokens =      t.UrlFor { DraftId = cell.DraftId; CellId = cell.CellId }
             Completions = t.UrlFor { DraftId = cell.DraftId; CellId = cell.CellId; Line = None; Column = None }
-            Code =        t.UrlFor { DraftId = cell.DraftId; CellId = cell.CellId; Line = None; Column = None }
+            Code =        t.UrlFor { DraftId = cell.DraftId; CellId = cell.CellId }
         }
+
+    do t.GetT <| fun (errors : Errors) ->
+        [| |]
 
     do t.GetT <| fun (tokens : Tokens) ->
         [| |]
@@ -130,13 +138,6 @@ type DraftModule(drafts : IDraftContainer) as t =
                 agent, agent.CreateScriptOptions("script.fsx", text)
 
         agent.TriggerParseRequest(opts, full = false)
-        
-        let completions =
-            match pos code.Line code.Column with
-            | Some pos -> doCompletions pos agent opts
-            | None -> [| |]
-
-        { Tokens = [| |]; Completions = completions }
 
 type DraftContainer() =
     let syncRoot = obj()

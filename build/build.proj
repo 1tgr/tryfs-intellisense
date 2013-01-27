@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" DefaultTargets="Deploy" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <DeployDir>c:\inetpub\wwwroot\intellisense</DeployDir>
+  </PropertyGroup>
+
+  <UsingTask AssemblyFile="MSBuild.ExtensionPack.dll" TaskName="RoboCopy" />
+
+  <Target Name="Copy">
+    <Error Condition="!Exists($(DeployDir))" Message="IIS deployment directory $(DeployDir) does not exist" />
+    <RoboCopy Source="..\artifacts" Destination="$(DeployDir)" Files="*.*" Options="/mir" />
+  </Target>
+
+  <Target Name="Deploy" DependsOnTargets="Copy" />
+</Project>

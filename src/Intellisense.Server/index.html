@@ -5,6 +5,9 @@
     <title>F# Autocomplete Demo</title>
     <link rel="stylesheet" href="content/css/codemirror.css">
     <link rel="stylesheet" href="content/css/simple-hint.css">
+    <style>
+      .error {font-family: arial; font-size: 70%; background: #ffa; color: #a00; padding: 2px 5px 3px; }
+    </style>
   </head>
   <body>
     <h1>F# Autocomplete Demo</h1>
@@ -34,11 +37,13 @@ function sendCode(editor, code) {
   }).then(function() {
     errorsPromise =
       $.Deferred().done(function(errors) {
-        $.each(lineWidgets, function(_, w) { w.clear(); });
-        lineWidgets = $.map(errors, function(error) {
-          var div = $("<div/>").text(error.Message);
-          return editor.addLineWidget(error.StartLine, div[0]);
-        });
+        editor.operation(function() {
+          $.each(lineWidgets, function(_, w) { w.clear(); });
+          lineWidgets = $.map(errors, function(error) {
+            var div = $("<div/>").text(error.Message).addClass("error");
+            return editor.addLineWidget(error.StartLine, div[0]);
+          });
+        })
       });
 
     $.ajax({
@@ -62,7 +67,7 @@ function change(editor) {
   }
 
   var code = editor.getValue();
-  changeTimeoutId = window.setTimeout(function() { sendCode(editor, code); }, 100);
+  changeTimeoutId = window.setTimeout(function() { sendCode(editor, code); }, 500);
 }
 
 function getHints(editor) {

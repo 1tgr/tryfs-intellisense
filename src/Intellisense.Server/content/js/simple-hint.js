@@ -83,6 +83,7 @@
         if (options.completeSingle && completions.length == 1) {
           insert(0);
           close();
+          setTimeout(function(){editor.focus();}, 50);
           return;
         }
 

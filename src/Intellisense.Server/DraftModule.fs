@@ -3,6 +3,7 @@ namespace Tim.TryFSharp.Intellisense.Server
 open System.IO
 open Nancy
 open Nancy.Conventions
+open Nancy.Diagnostics
 open FSharp.InteractiveAutocomplete
 open Microsoft.FSharp.Compiler.SourceCodeServices
 
@@ -189,3 +190,6 @@ type Bootstrapper() =
     override t.ConfigureConventions(conventions) =
         base.ConfigureConventions(conventions)
         conventions.StaticContentsConventions.Add(StaticContentConventionBuilder.AddFile("/index.html", "index.html"))
+
+    override t.DiagnosticsConfiguration =
+        DiagnosticsConfiguration(Password = "admin")

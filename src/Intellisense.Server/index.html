@@ -26,13 +26,15 @@ printfn "Hello, %s"</textarea>
         var prefix = editor.getLine(cur.line).slice(token.start, cur.ch).trim();
         console.log(prefix);
 
-        $.ajax({
-          url: "draft/1/cell/1/code?line=" + cur.line + "&column=" + cur.ch,
-          contentType: "text/plain",
-          data: editor.getValue(),
-          dataType: "json",
-          type: "PUT",
-          success: function(response) {
+        var promise =
+          $.ajax({
+            url: "draft/1/cell/1/code?line=" + cur.line + "&column=" + cur.ch,
+            contentType: "text/plain",
+            data: editor.getValue(),
+            dataType: "json",
+            type: "PUT"
+          })
+          .then(function(response) {
             var i = 0, c = response.Completions;
 
             if (prefix.length) {
@@ -45,13 +47,14 @@ printfn "Hello, %s"</textarea>
               }
             }
 
-            cont({
-              list: c,
-              from: { line: cur.line, ch: token.start },
-              to: { line: cur.line, ch: token.end }
-            });
-          }
-        });
+            return c;
+          });
+
+        return {
+          promise: promise,
+          from: { line: cur.line, ch: token.start },
+          to: { line: cur.line, ch: token.end }
+        };
       }
 
       CodeMirror.commands.autocomplete = function(cm) {

@@ -46,6 +46,8 @@
     <None Include="content\css\simple-hint.css" />
     <None Include="content\js\codemirror.js" />
     <None Include="content\js\simple-hint.js" />
+    <None Include="content\js\codemirror-fsharp.js" />
+    <None Include="content\js\jquery.min.js" />
   </ItemGroup>
   <ItemGroup>
     <Reference Include="mscorlib" />

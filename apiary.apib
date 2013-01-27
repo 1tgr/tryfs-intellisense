@@ -59,6 +59,8 @@ These don't exist yet. I introduce new resources representing:
 
 - A server-side draft copy of the notebook being edited
 - A list of the F# source code tokens in the draft copy of the code
+- A list of compiler errors received while parsing the draft copy of the code (with source-code
+  ranges and error messages)
 - The identifiers available to the user at a given line and column location (intellisense-style autocompletion)
 --
 
@@ -104,6 +106,12 @@ DELETE /draft/{draftid}
 < 200
 
 
+Retrieve a list of any compiler errors for one cell in a draft copy of a notebook.
+GET /draft/{draftid}/cell/{cellid}/errors
+< 200
+< Content-Type: application/json
+{ "errors": [ /* ... */ ] }
+
 Retrieve the list of tokens for one cell in a draft copy of a notebook.
 GET /draft/{draftid}/cell/{cellid}/tokens
 < 200
@@ -116,12 +124,14 @@ GET /draft/{draftid}/cell/{cellid}/completions{?line,column}
 < Content-Type: application/json
 { "completions": [ "Equals", "GetHashCode", "GetType", "Say", "ToString" ] }
 
-Update the F# code in one cell of a draft copy of a notebook, and retrieve an updated list of the tokens in the cell,
-and a list of autocomplete options available at the cursor.
+Update the F# code in one cell of a draft copy of a notebook.
 
 The client does not have to push new code for every character typed, but could do so every 5 seconds
-(or as soon as the server responds with the last set of tokens).
-POST /draft/{draftid}/cell/{cellid}/code{?line,column}
+(or as soon as the server responds with the last set of tokens). The server returns a blank
+response immediately after this call, and parsing continues in the background. When the client
+accesses one of the errors, tokens or completions resources, the server first waits for any
+outstanding parse requests to finish.
+POST /draft/{draftid}/cell/{cellid}/code
 > Content-Type: text/plain
 let rec fib =
     let d = Dictionary()
@@ -135,8 +145,7 @@ let rec fib =
             d.[n] <- f
             f
 < 200
-< Content-Type: application/json
-{ "tokens": [ /* ... */ ], "completions": [ /* ... */ ] }
+
 
 --
 Proposed sanitised API for F# interactive processes

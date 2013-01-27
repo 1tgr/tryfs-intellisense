@@ -13,8 +13,181 @@
     <h1>F# Autocomplete Demo</h1>
 
     <form>
-      <textarea id="code" name="code">let who = "world"
-printfn "Hello, %s"</textarea>
+      <textarea id="code" name="code">#nowarn "40"
+#nowarn "42"
+namespace Tim.TryFSharp.Intellisense.Server
+
+open System
+open System.Collections.Generic
+open System.IO
+open System.Text
+open System.Web
+open Microsoft.FSharp.Reflection
+open Nancy
+open Nancy.ModelBinding
+open Tavis.UriTemplates
+
+type IRestResource =
+    interface end
+
+type IRestGet&lt;'Response&gt; =
+    inherit IRestResource
+
+type IRestPut&lt;'Request, 'Response&gt; =
+    inherit IRestResource
+
+type IRestPost&lt;'Request, 'Response&gt; =
+    inherit IRestResource
+
+type IRestDelete =
+    inherit IRestResource
+
+[&lt;MeasureAnnotatedAbbreviation&gt;]
+type string&lt;'Measure&gt; = string
+
+[&lt;AttributeUsage(AttributeTargets.Class, AllowMultiple = true)&gt;]
+type UrlAttribute(template  : string) =
+    inherit Attribute()
+
+    member t.Template = template
+
+[&lt;AutoOpen&gt;]
+module NancyModuleExtensions =
+
+    let private memoize (fn : 'a -&gt; 'b) : 'a -&gt; 'b =
+        let cache = Dictionary()
+        let syncRoot = obj()
+        fun a -&gt;
+            lock syncRoot &lt;| fun () -&gt;
+                match cache.TryGetValue(a) with
+                | true, b -&gt; b
+                | false, _ -&gt;
+                    let b = fn a
+                    cache.[a] &lt;- b
+                    b
+
+    let rec private convert : Type -&gt; string -&gt; obj =
+        memoize &lt;| fun toType -&gt;
+            if toType.IsGenericType && toType.GetGenericTypeDefinition() = typedefof&lt;option&lt;_&gt;&gt; then
+                let someCase, convertInner =
+                    FSharpType.GetUnionCases(toType)
+                    |&gt; Array.pick (fun c -&gt;
+                        match c.GetFields() with
+                        | [| f |] -&gt; Some (c, convert f.PropertyType)
+                        | _ -&gt; None)
+
+                let ctor = FSharpValue.PreComputeUnionConstructor(someCase)
+                function
+                | null | "" -&gt; null
+                | s -&gt; ctor [| convertInner s |]
+
+            elif typeof&lt;IConvertible&gt;.IsAssignableFrom(toType) then
+                fun s -&gt; Convert.ChangeType(s, toType)
+
+            else
+                failwithf "Can't convert string to %O" toType
+            
+
+    [&lt;Sealed&gt;]
+    type private RestResourceImpl&lt;'Resource&gt; private () =
+        static let typ = typeof&lt;'Resource&gt;
+
+        static let fields, ctor, reader =
+            if FSharpType.IsUnion(typ) then
+                match FSharpType.GetUnionCases(typ) with
+                | [| c |] when c.GetFields() = [| |] -&gt;
+                    let value = FSharpValue.MakeUnion(c, [| |])
+                    [| |], (fun _ -&gt; value), (fun _ -&gt; [| |])
+                | a -&gt; failwithf "Unions must only have one case. %O has %d cases." typ a.Length
+
+            elif FSharpType.IsRecord(typ) then
+                [| for pi in FSharpType.GetRecordFields(typ) -&gt; pi.Name, convert pi.PropertyType |],
+                    FSharpValue.PreComputeRecordConstructor(typ),
+                    FSharpValue.PreComputeRecordReader(typ)
+
+            else
+                failwithf "Only single-case unions and records are supported, not %O" typ
+
+        static let urls =
+            match typ.GetCustomAttributes(typeof&lt;UrlAttribute&gt;, true) with
+            | [| |] -&gt; failwithf "No [&lt;Url&gt;] attribute on %O" typeof&lt;'Resource&gt;
+            | a -&gt; [| for attr in a -&gt; (unbox&lt;UrlAttribute&gt; attr).Template |]
+
+        static member Urls = urls
+
+        static member PartsToResource (part : string -&gt; string) : 'Resource =
+            let values = Array.map (fun (name, convert) -&gt; convert (part name)) fields
+            unbox (ctor values)
+
+        static member ResourceToString (resource : 'Resource) : string =
+            let values = reader resource
+            let template = UriTemplate(urls.[0])
+            
+            for name in template.GetParameterNames() do
+                let value =
+                    match Array.tryFindIndex (fst &gt;&gt; (=) name) fields with
+                    | Some n -&gt; values.[n]
+                    | None -&gt; failwithf "No field called '%s' in %O" name typeof&lt;'Resource&gt;
+
+                template.SetParameter(name, value)
+
+            template.Resolve()
+
+    let private addRoute&lt;'Resource, 'Response when 'Resource :&gt; IRestResource&gt; (t : NancyModule) (builder : NancyModule.RouteBuilder) (fn : 'Resource -&gt; 'Response) (url : string) =
+        let path, queryParams =
+            let template = UriTemplate(url)
+            for name in template.GetParameterNames() do
+                template.SetParameter(name, "{" + name + "}")
+                
+            match template.Resolve().Replace("%7B", "{").Replace("%7D", "}").Split([| '?' |], 2) with
+            | [| |] -&gt; "", Set.empty
+            | [| path |] -&gt; path, Set.empty
+            | a -&gt; a.[0], Set.ofSeq (HttpUtility.ParseQueryString(a.[1])).AllKeys
+
+        builder.[path] &lt;- fun dict -&gt;
+            let dict : DynamicDictionary = unbox dict
+            let query : DynamicDictionary = unbox t.Request.Query
+
+            let resource =
+                RestResourceImpl&lt;_&gt;.PartsToResource &lt;| fun name -&gt;
+                    let dict =
+                        if Set.contains name queryParams then
+                            query
+                        else
+                            dict
+
+                    unbox (dict.[name] :?&gt; DynamicDictionaryValue).Value
+
+            box (fn resource)
+
+    [&lt;NoDynamicInvocation&gt;]
+    let inline private retype (x : 'a) : 'b = (# "" x : 'b #)
+
+    type NancyModule with
+        member t.UrlFor (resource : 'Resource) : string&lt;'Resource&gt; =
+            retype (t.ModulePath + RestResourceImpl&lt;_&gt;.ResourceToString(resource))
+
+        member t.GetT&lt;'Resource, 'Response when 'Resource :&gt; IRestGet&lt;'Response&gt;&gt; (fn : 'Resource -&gt; 'Response) =
+            Array.iter (addRoute t t.Get fn) RestResourceImpl&lt;'Resource&gt;.Urls
+
+        member t.PutT&lt;'Resource, 'Request, 'Response when 'Resource :&gt; IRestPut&lt;'Request, 'Response&gt;&gt; (fn : 'Resource -&gt; 'Request -&gt; 'Response) =
+            Array.iter (addRoute t t.Put (fun resource -&gt; fn resource (t.Bind&lt;_&gt;()))) RestResourceImpl&lt;'Resource&gt;.Urls
+
+        member t.PostT&lt;'Resource, 'Request, 'Response when 'Resource :&gt; IRestPost&lt;'Request, 'Response&gt;&gt; (fn : 'Resource -&gt; 'Request -&gt; 'Response) =
+            Array.iter (addRoute t t.Post (fun resource -&gt; fn resource (t.Bind&lt;_&gt;()))) RestResourceImpl&lt;'Resource&gt;.Urls
+
+        member t.DeleteT&lt;'Resource when 'Resource :&gt; IRestDelete&gt; (fn : 'Resource -&gt; unit) =
+            Array.iter (addRoute t t.Delete fn) RestResourceImpl&lt;'Resource&gt;.Urls
+
+type StringModelBinder() =
+    interface IModelBinder with
+        member t.CanBind typ =
+            typ = typeof&lt;string&gt;
+            
+        member t.Bind(context, modelType, instance, config, blacklist) =
+            let bytes = Array.zeroCreate (int context.Request.Headers.ContentLength)
+            let length = context.Request.Body.Read(bytes, 0, bytes.Length)
+            box (Encoding.UTF8.GetString(bytes, 0, length))</textarea>
     </form>
 
     <p>Press Ctrl+Space for autocompletion.</p>
@@ -24,50 +197,52 @@ printfn "Hello, %s"</textarea>
     <script src="content/js/simple-hint.js"></script>
     <script src="content/js/jquery.js"></script>
     <script>
-var lineWidgets = [ ];
-var changeTimeoutId = null;
-var errorsPromise = null;
-
-function sendCode(editor, code) {
-  $.ajax({
-    url: "draft/1/cell/1/code",
-    contentType: "text/plain",
-    data: code,
-    type: "PUT"
-  }).then(function() {
-    errorsPromise =
-      $.Deferred().done(function(errors) {
-        editor.operation(function() {
-          $.each(lineWidgets, function(_, w) { w.clear(); });
-          lineWidgets = $.map(errors, function(error) {
-            var div = $("<div/>").text(error.Message).addClass("error");
-            return editor.addLineWidget(error.StartLine, div[0]);
-          });
-        })
-      });
-
-    $.ajax({
-      url: "draft/1/cell/1/errors",
-      dataType: "json"
-    }).done(function(errors) {
-      if (errorsPromise)
-        errorsPromise.resolve(errors);
-    });
-  });
+function delay(millis) {
+  var promise = $.Deferred();
+  var id = window.setTimeout(function() { promise.resolve(null); }, millis);
+  return promise.fail(function() { window.clearTimeout(id); });
 }
 
-function change(editor) {
-  if (changeTimeoutId !== null) {
-    window.clearTimeout(changeTimeoutId);
-  }
+var lineWidgets = [ ];
+var delayPromise = null;
 
-  if (errorsPromise) {
-    errorsPromise.reject();
-    errorsPromise = null;
-  }
-
+function change(editor, millis) {
   var code = editor.getValue();
-  changeTimeoutId = window.setTimeout(function() { sendCode(editor, code); }, 500);
+  var cancelled = false;
+  millis = typeof(millis) == "number" ? millis : 500;
+
+  if (delayPromise)
+    delayPromise.reject();
+
+  delayPromise = delay(millis)
+    .fail(function() { cancelled = true; })
+    .always(function() { parsedPromise = null; });
+
+  delayPromise.then(function() {
+    return $.ajax({
+      url: "draft/1/cell/1/code",
+      contentType: "text/plain",
+      data: code,
+      type: "PUT"
+    });
+  }).then(function() {
+    if (!cancelled) {
+      return $.ajax({
+        url: "draft/1/cell/1/errors",
+        dataType: "json"
+      });
+    }
+  }).done(function(errors) {
+    if (!cancelled) {
+      editor.operation(function() {
+        $.each(lineWidgets, function(_, w) { w.clear(); });
+        lineWidgets = $.map(errors, function(error) {
+          var div = $("<div/>").text(error.Message).addClass("error");
+            return editor.addLineWidget(error.StartLine, div[0]);
+          });
+        });
+    }
+  });
 }
 
 function getHints(editor) {
@@ -75,12 +250,16 @@ function getHints(editor) {
   var prefix = editor.getLine(cur.line).slice(token.start, cur.ch).trim();
   console.log(prefix);
 
-  var promise =
-  $.ajax({
-    url: "draft/1/cell/1/completions",
-    data: { line: cur.line, column: cur.ch },
-    dataType: "json"
-  }).then(function(c) {
+  function getErrors() {
+    return $.ajax({
+      url: "draft/1/cell/1/completions",
+      data: { line: cur.line, column: cur.ch },
+      dataType: "json"
+    });
+  }
+
+  var promise = parsedPromise ? parsedPromise.then(getErrors) : getErrors();
+  promise = promise.then(function(c) {
     var i = 0;
 
     if (prefix.length) {
@@ -111,7 +290,9 @@ var editor = CodeMirror.fromTextArea(document.getElementById("code"), {
   lineNumbers: true,
   extraKeys: {"Ctrl-Space": "autocomplete"},
   mode: "fsharp"
-}).on("change", change);
+});
+editor.on("change", change);
+change(editor, 0);
     </script>
   </body>
 </html>

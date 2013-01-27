@@ -21,55 +21,92 @@ printfn "Hello, %s"</textarea>
     <script src="content/js/simple-hint.js"></script>
     <script src="content/js/jquery.js"></script>
     <script>
-      function getHints(editor) {
-        var cur = editor.getCursor(), token = editor.getTokenAt(cur);
-        var prefix = editor.getLine(cur.line).slice(token.start, cur.ch).trim();
-        console.log(prefix);
+var lineWidgets = [ ];
+var changeTimeoutId = null;
+var errorsPromise = null;
 
-        var promise =
-          $.ajax({
-            url: "draft/1/cell/1/code",
-            contentType: "text/plain",
-            data: editor.getValue(),
-            type: "PUT"
-          }).then(function() {
-            return $.ajax({
-              url: "draft/1/cell/1/completions",
-              data: { line: cur.line, column: cur.ch },
-              dataType: "json"
-            });
-          }).then(function(c) {
-            var i = 0;
-
-            if (prefix.length) {
-              while (i < c.length) {
-                if (c[i].indexOf(prefix) == 0) {
-                  i++;
-                } else {
-                  c.splice(i, 1);
-                }
-              }
-            }
-
-            return c;
-          });
-
-        return {
-          promise: promise,
-          from: { line: cur.line, ch: token.start },
-          to: { line: cur.line, ch: token.end }
-        };
-      }
-
-      CodeMirror.commands.autocomplete = function(cm) {
-        CodeMirror.simpleHint(cm, getHints, { closeOnBackspace: false });
-      };
-
-      var editor = CodeMirror.fromTextArea(document.getElementById("code"), {
-        lineNumbers: true,
-        extraKeys: {"Ctrl-Space": "autocomplete"},
-        mode: "fsharp"
+function sendCode(editor, code) {
+  $.ajax({
+    url: "draft/1/cell/1/code",
+    contentType: "text/plain",
+    data: code,
+    type: "PUT"
+  }).then(function() {
+    errorsPromise =
+      $.Deferred().done(function(errors) {
+        $.each(lineWidgets, function(_, w) { w.clear(); });
+        lineWidgets = $.map(errors, function(error) {
+          var div = $("<div/>").text(error.Message);
+          return editor.addLineWidget(error.StartLine, div[0]);
+        });
       });
+
+    $.ajax({
+      url: "draft/1/cell/1/errors",
+      dataType: "json"
+    }).done(function(errors) {
+      if (errorsPromise)
+        errorsPromise.resolve(errors);
+    });
+  });
+}
+
+function change(editor) {
+  if (changeTimeoutId !== null) {
+    window.clearTimeout(changeTimeoutId);
+  }
+
+  if (errorsPromise) {
+    errorsPromise.reject();
+    errorsPromise = null;
+  }
+
+  var code = editor.getValue();
+  changeTimeoutId = window.setTimeout(function() { sendCode(editor, code); }, 100);
+}
+
+function getHints(editor) {
+  var cur = editor.getCursor(), token = editor.getTokenAt(cur);
+  var prefix = editor.getLine(cur.line).slice(token.start, cur.ch).trim();
+  console.log(prefix);
+
+  var promise =
+  $.ajax({
+    url: "draft/1/cell/1/completions",
+    data: { line: cur.line, column: cur.ch },
+    dataType: "json"
+  }).then(function(c) {
+    var i = 0;
+
+    if (prefix.length) {
+      while (i < c.length) {
+        if (c[i].indexOf(prefix) == 0) {
+          i++;
+          } else {
+          c.splice(i, 1);
+        }
+      }
+    }
+
+    return c;
+  });
+
+  return {
+    promise: promise,
+    from: { line: cur.line, ch: token.start },
+    to: { line: cur.line, ch: token.end }
+  };
+}
+
+CodeMirror.commands.autocomplete = function(cm) {
+  CodeMirror.simpleHint(cm, getHints, { closeOnBackspace: false });
+};
+
+var editor = CodeMirror.fromTextArea(document.getElementById("code"), {
+  lineNumbers: true,
+  extraKeys: {"Ctrl-Space": "autocomplete"},
+  mode: "fsharp"
+}).on("change", change);
     </script>
   </body>
 </html>

@@ -4,6 +4,7 @@ open System.IO
 open Nancy
 open Nancy.Conventions
 open FSharp.InteractiveAutocomplete
+open Microsoft.FSharp.Compiler.SourceCodeServices
 
 type Ref<'Resource> =
     {
@@ -13,7 +14,13 @@ type Ref<'Resource> =
 
 type Error =
     {
-        Todo : unit
+        StartLine : int
+        EndLine : int
+        StartColumn : int
+        EndColumn : int
+        Severity : Severity
+        Message : string
+        Subcategory : string
     }
 
 type Token =
@@ -119,7 +126,19 @@ type DraftModule(drafts : IDraftContainer) as t =
         }
 
     do t.GetT <| fun (errors : Errors) ->
-        [| |]
+        let agent, _ = drafts.GetAgent(errors.DraftId)
+        [|
+            for e in agent.GetErrors() ->
+                {
+                    StartLine = e.StartLine
+                    EndLine = e.EndLine
+                    StartColumn = e.StartColumn
+                    EndColumn = e.EndColumn
+                    Severity = e.Severity
+                    Message = e.Message
+                    Subcategory = e.Subcategory
+                }
+        |]
 
     do t.GetT <| fun (tokens : Tokens) ->
         [| |]

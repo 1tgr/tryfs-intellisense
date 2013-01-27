@@ -1,0 +1,181 @@
+HOST: https://fsnotebook.net/api
+
+--- fsnotebook.net API proposal ---
+--
+Existing fsnotebook.net API
+These are used by the web client over AJAX.
+
+API access is validated according to the current logged in user, set through a browser cookie. The notebook JSON schema is not shown here.
+--
+
+Retrieve a list of notebooks accessible to the current user.
+GET /notebook
+< 200
+< Content-Type: application/json
+{ "notebooks": [
+  { "url": "/notebook/1", "id": "1", "rev": "1-abc", "title": "Demo", "status": "published" }
+] }
+
+Create a notebook.
+POST /notebook
+> Content-Type: application/json
+{ "title": "Demo" }
+< 201
+< Content-Type: application/json
+{ "url": "/notebook/2", "id": "2", "rev": "2-def", "status": "draft" }
+
+Retrieve a notebook.
+GET /notebook/{id}
+< 200
+< Content-Type: application/json
+{ "id": "1", "rev": "2-def", "title": "Demo", "cells": [
+    { "id": "1", "syntax": "markdown", "code": "This is a simple [F#](http://fsharp.org) program", "output": { "text/html": "This is a simple <a href=\"http://fsharp.org\">F#</a> program" } },
+    { "id": "2", "syntax": "fsharp", "code": "printfn \"Hello world!\"", "output": { "text/plain": "Hello world!" } }
+] }
+
+Save a notebook.
+
+The `rev` property must be set in the JSON body. Returns HTTP status 419 in the event of a conflict.
+PUT /notebook/{id}
+> Content-Type: application/json
+{ "rev": "2-def", "title": "Demo", "cells": [
+    { "id": "1", "syntax": "markdown", "code": "This is a simple [F#](http://fsharp.org) program", "output": { "text/html": "This is a simple <a href=\"http://fsharp.org\">F#</a> program" } },
+    { "id": "2", "syntax": "fsharp", "code": "printfn \"Hello world!\"", "output": { "text/plain": "Hello world!" } }
+    { "id": "3", "syntax": "fsharp", "code": "let rec fib = function 0 | 1 -> 1 | n -> fib (n - 2) + fib (n - 1)", "output": { } }
+] }
+< 200
+{ "rev": "3-bcd" }
+
+Delete a notebook.
+
+The `rev` property must be set in the JSON body. Returns HTTP status 419 in the event of a conflict.
+DELETE /notebook/{id}
+< 200
+
+
+--
+Proposed compiler API
+These don't exist yet. I introduce new resources representing:
+
+- A server-side draft copy of the notebook being edited
+- A list of the F# source code tokens in the draft copy of the code
+- The identifiers available to the user at a given line and column location (intellisense-style autocompletion)
+--
+
+Retrieve the list of tokens for one cell in the saved copy of a notebook.
+
+These are the tokens returned by FSharp.Formatting. The editor uses these to add tooltips and highlight errors; it can fetch these in the background
+after the page is loaded, and depending on server load there may be a lag in returning the results. Note that syntax highlighting is performed on
+the client side (in Javascript) by the Codemirror editor.
+
+**Todo:** for tooltips on the client side we'll need to return line and column information for each token.
+GET /notebook/{id}/cell/{cellid}/tokens
+< 200
+< Content-Type: application/json
+{ "tokens": [
+    { "token": { "kind": "", "code": "", "tip": "" } },
+    { "omitted": "" },
+    { "output": "" },
+    { "error": "" }
+] }
+
+Retrieve a list of draft copies of a notebook.
+
+The user can choose to resume editing or delete any of these
+GET /notebook/{id}/draft
+< 200
+< Content-Type: application/json
+{ "drafts": [
+    { "url": "/draft/a", "id": "a" }
+] }
+
+Start editing a notebook.
+
+The server keeps a draft copy of the cells in the notebook. As the user enters code, the client can push the updated code to the server
+and receive new token information. The server does not delete drafts when the user closes their web browser, but instead holds onto them
+so that the user can resume editing later.
+POST /notebook/{id}/draft
+< 201
+< Content-Type: application/json
+{ "url": "/draft/b", "id": "b" }
+
+Notify the server that the user no longer wants to keep a draft copy of a notebook.
+DELETE /draft/{draftid}
+< 200
+
+
+Retrieve the list of tokens for one cell in a draft copy of a notebook.
+GET /draft/{draftid}/cell/{cellid}/tokens
+< 200
+< Content-Type: application/json
+{ "tokens": [ /* ... */ ] }
+
+Retrieve a list of autocomplete options, given that the cursor is positioned at a given line and column within a cell in a draft copy of a notebook.
+GET /draft/{draftid}/cell/{cellid}/completions{?line,column}
+< 200
+< Content-Type: application/json
+{ "completions": [ "Equals", "GetHashCode", "GetType", "Say", "ToString" ] }
+
+Update the F# code in one cell of a draft copy of a notebook, and retrieve an updated list of the tokens in the cell,
+and a list of autocomplete options available at the cursor.
+
+The client does not have to push new code for every character typed, but could do so every 5 seconds
+(or as soon as the server responds with the last set of tokens).
+POST /draft/{draftid}/cell/{cellid}/code{?line,column}
+> Content-Type: text/plain
+let rec fib =
+    let d = Dictionary()
+    | 0 | 1 -> 1
+    function
+    | n ->
+        match d.TryGetValue(n) with
+        | true, f -> f
+        | false, _ ->
+            let f = fib (n - 2) + fib (n - 1)
+            d.[n] <- f
+            f
+< 200
+< Content-Type: application/json
+{ "tokens": [ /* ... */ ], "completions": [ /* ... */ ] }
+
+--
+Proposed sanitised API for F# interactive processes
+The site currently uses the same engine as http://tryfs.net, which consists of a message queue in a CouchDB database. There is currently
+no dedicated REST API: interaction from the web client consists of direct calls to CouchDB.
+
+It isn't strictly necessary to implement this straight away, but it would be cleaner in the long term to do so.
+--
+
+Retrieve a list of running F# interactive processes accessible to the current user.
+GET /interactive
+< 200
+< Content-Type: application/json
+{ "processes": [
+   { "id": "1" } 
+] }
+
+Start an F# interactive process.
+POST /interactive
+< 201
+< Content-Type: application/json
+{ "url": "/interactive/1", "id": "456def" }
+
+Stop an F# interactive process.
+DELETE /interactive/{id}
+< 200
+
+
+Send text to an F# interactive process.
+POST /interactive/{id}/messages
+> Content-Type: text/plain
+printfn "Hello world!"
+< 201
+{ "sequence": "789" }
+
+Retrieve text printed by an F# interactive process, waiting for text to arrive if necessary (long polling).
+GET /interactive/{id}/messages{?since}
+< 200
+< Content-Type: application/json
+{ "messages": [
+    "Hello world!"
+], "next_sequence": "790" }

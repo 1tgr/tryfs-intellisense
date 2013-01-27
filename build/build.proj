@@ -8,7 +8,7 @@
 
   <Target Name="Copy">
     <Error Condition="!Exists($(DeployDir))" Text="IIS deployment directory $(DeployDir) does not exist" />
-    <RoboCopy Source="..\artifacts" Destination="$(DeployDir)" Files="*.*" Options="/mir" />
+    <RoboCopy Source="..\artifacts" Destination="$(DeployDir)" Files="*.*" Options="/mir" LogToConsole="true" />
   </Target>
 
   <Target Name="Deploy" DependsOnTargets="Copy" />

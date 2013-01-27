@@ -7,7 +7,7 @@
   <UsingTask AssemblyFile="MSBuild.ExtensionPack.dll" TaskName="RoboCopy" />
 
   <Target Name="Copy">
-    <Error Condition="!Exists($(DeployDir))" Message="IIS deployment directory $(DeployDir) does not exist" />
+    <Error Condition="!Exists($(DeployDir))" Text="IIS deployment directory $(DeployDir) does not exist" />
     <RoboCopy Source="..\artifacts" Destination="$(DeployDir)" Files="*.*" Options="/mir" />
   </Target>
 

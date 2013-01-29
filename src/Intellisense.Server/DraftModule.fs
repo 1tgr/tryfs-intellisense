@@ -1,5 +1,6 @@
 namespace Tim.TryFSharp.Intellisense.Server
 
+open System
 open System.IO
 open Nancy
 open Nancy.Conventions
@@ -155,7 +156,7 @@ type DraftModule(drafts : IDraftContainer) as t =
     do t.PutT <| fun (code : Code) (text : string) ->
         let agent, opts =
             drafts.WithAgent code.DraftId <| fun agent _ ->
-                agent, agent.CreateScriptOptions("script.fsx", text)
+                agent, agent.CreateScriptOptions(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "script.fsx"), text)
 
         agent.TriggerParseRequest(opts, full = false)
 
@@ -171,7 +172,7 @@ type DraftContainer() =
                     | Some t -> t
                     | None ->
                         let agent = IntelliSenseAgent()
-                        agent, agent.CreateScriptOptions("script.fsx", "")
+                        agent, agent.CreateScriptOptions(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "script.fsx"), "")
 
                 let result, opts = fn agent opts
                 agents <- Map.add id (agent, opts) agents

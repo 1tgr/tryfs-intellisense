@@ -73,5 +73,9 @@
       <Project>{15B7F794-0BB2-4B66-AD78-4A951F1209B2}</Project>
       <Name>Nancy.Hosting.Aspnet</Name>
     </ProjectReference>
+    <Reference Include="FSharp.Compiler">
+      <HintPath>..\..\packages\FSharp.Compiler.4.3\FSharp.Compiler.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
   </ItemGroup>
 </Project>

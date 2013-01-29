@@ -54,12 +54,6 @@
     <Reference Include="FSharp.Core">
       <HintPath>..\..\packages\FSharp.4.3\FSharp.Core.dll</HintPath>
     </Reference>
-    <Reference Include="Nancy">
-      <HintPath>..\..\packages\Nancy\lib\net40\Nancy.dll</HintPath>
-    </Reference>
-    <Reference Include="Nancy.Hosting.Aspnet">
-      <HintPath>..\..\packages\Nancy.Hosting.Aspnet\lib\net40\Nancy.Hosting.Aspnet.dll</HintPath>
-    </Reference>
     <Reference Include="System" />
     <Reference Include="System.Core" />
     <Reference Include="Tavis.UriTemplates">
@@ -71,6 +65,14 @@
     <ProjectReference Include="..\..\fsharpbinding\FSharp.CompilerBinding\FSharp.CompilerBinding.fsproj">
       <Project>{88F6940F-D300-474C-B2A7-E2ECD5B04B57}</Project>
       <Name>FSharp.CompilerBinding</Name>
+    </ProjectReference>
+    <ProjectReference Include="..\..\Nancy\src\Nancy\Nancy.csproj">
+      <Project>{34576216-0DCA-4B0F-A0DC-9075E75A676F}</Project>
+      <Name>Nancy</Name>
+    </ProjectReference>
+    <ProjectReference Include="..\..\Nancy\src\Nancy.Hosting.Aspnet\Nancy.Hosting.Aspnet.csproj">
+      <Project>{15B7F794-0BB2-4B66-AD78-4A951F1209B2}</Project>
+      <Name>Nancy.Hosting.Aspnet</Name>
     </ProjectReference>
   </ItemGroup>
   <ItemGroup>

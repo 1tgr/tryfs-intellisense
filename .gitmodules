@@ -1,3 +1,6 @@
 [submodule "fsharpbinding"]
 	path = fsharpbinding
 	url = https://github.com/fsharp/fsharpbinding.git
+[submodule "Nancy"]
+	path = Nancy
+	url = https://github.com/NancyFx/Nancy.git

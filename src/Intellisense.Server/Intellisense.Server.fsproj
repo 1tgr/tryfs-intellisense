@@ -50,6 +50,10 @@
     <None Include="content\js\jquery.js" />
   </ItemGroup>
   <ItemGroup>
+    <Reference Include="FSharp.Compiler.Server.Shared">
+      <HintPath>..\..\packages\FSharp.Compiler.4.3\FSharp.Compiler.Server.Shared.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
     <Reference Include="mscorlib" />
     <Reference Include="FSharp.Core">
       <HintPath>..\..\packages\FSharp.4.3\FSharp.Core.dll</HintPath>

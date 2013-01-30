@@ -65,8 +65,9 @@ type IntelliSenseAgent() =
   let agent = MailboxProcessor.Start(fun agent -> 
     let rec loop errors = async {
       let! msg = agent.Receive()
-      match msg with 
-      | TriggerParseRequest(opts, full) ->
+      try
+        match msg with 
+        | TriggerParseRequest(opts, full) ->
           // Start parsing and update errors with the new ones
           let untypedInfo = checker.UntypedParse(opts.FileName, opts.Source, opts.Options) 
           let res = 
@@ -81,12 +82,12 @@ type IntelliSenseAgent() =
           if full then checker.StartBackgroundCompile(opts.Options) 
           return! loop errors 
 
-      | GetDeclarationsMessage(opts, repl) ->
+        | GetDeclarationsMessage(opts, repl) ->
           let untypedInfo = checker.UntypedParse(opts.FileName, opts.Source, opts.Options) 
           repl.Reply(untypedInfo.GetNavigationItems().Declarations)
           return! loop errors 
 
-      | GetTypeCheckInfo(opts, timeout, reply) ->
+        | GetTypeCheckInfo(opts, timeout, reply) ->
           // Try to get information for the IntelliSense (in the specified time)
           let untypedInfo = checker.UntypedParse(opts.FileName, opts.Source, opts.Options) 
           try
@@ -99,10 +100,15 @@ type IntelliSenseAgent() =
             reply.Reply(None) 
             return! loop errors 
 
-      | GetErrors(reply) ->
+        | GetErrors(reply) ->
           // Return an array with errors that were reported last time
           reply.Reply(errors)
-          return! loop errors }
+          return! loop errors
+
+      with ex ->
+        Console.WriteLine(ex)
+        return! loop errors
+    }
     loop [||] )
 
   /// Returns default F# compiler options for the specified script file (FSX)
